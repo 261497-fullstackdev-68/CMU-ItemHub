@@ -1,0 +1,112 @@
+name: ${PROJECT_NAME}
+services:
+  db:
+    image: postgres:17-alpine
+    env_file:
+      - .env
+    container_name: ${PROJECT_NAME}-database
+    restart: always
+    ports:
+      - ${DATABASE_PORT}:5432
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: 
+      - g11-net
+
+  backend:
+    build: ./term-backend
+    env_file:
+      - .env
+    container_name: ${PROJECT_NAME}-backend
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      BACKEND_PORT: ${BACKEND_PORT}
+      OBJ_STORAGE_ADDR: ${OBJ_STORAGE_ADDR}
+      OBJ_STORAGE_PORT: ${OBJ_STORAGE_PORT}
+      OBJ_ACCESS_KEY: ${OBJ_ACCESS_KEY}
+      OBJ_SECRET_KEY: ${OBJ_SECRET_KEY}
+      OBJ_BUCKET: ${OBJ_BUCKET}
+      COOKIE_SECRET: ${COOKIE_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      CMU_ENTRAID_GET_TOKEN_URL: ${CMU_ENTRAID_GET_TOKEN_URL}
+      CMU_ENTRAID_REDIRECT_URL: ${CMU_ENTRAID_REDIRECT_URL}
+      CMU_ENTRAID_CLIENT_ID: ${CMU_ENTRAID_CLIENT_ID}
+      CMU_ENTRAID_CLIENT_SECRET: ${CMU_ENTRAID_CLIENT_SECRET}
+      SCOPE: ${SCOPE}
+      CMU_ENTRAID_GET_BASIC_INFO: ${CMU_ENTRAID_GET_BASIC_INFO}
+    ports:
+      - ${BACKEND_PORT}:${BACKEND_PORT}
+    command: sh -c "npx prisma migrate deploy && pnpm build && pnpm run start:prod"
+    networks:
+      - g11-net
+
+  minio:
+    image: minio/minio
+    env_file:
+      - .env
+    container_name: ${PROJECT_NAME}-minio
+    command: server /data --console-address ":${MINIO_WEB_INTERFACE_PORT}" --address ":${OBJ_STORAGE_PORT}"
+    restart: always
+    ports:
+      - ${OBJ_STORAGE_PORT}:${OBJ_STORAGE_PORT}
+      - ${MINIO_WEB_INTERFACE_PORT}:${MINIO_WEB_INTERFACE_PORT}
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${OBJ_STORAGE_PORT}/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - minio_data:/data
+    networks:
+      - g11-net
+
+  frontend:
+    build: ./term-frontend
+    env_file:
+      - .env
+    container_name: ${PROJECT_NAME}-frontend
+    environment:
+      NEXT_PUBLIC_BACKEND_URL: http://localhost:${BACKEND_PORT}
+      CMU_ENTRAID_URL: ${CMU_ENTRAID_URL}
+      CMU_ENTRAID_GET_TOKEN_URL: ${CMU_ENTRAID_GET_TOKEN_URL}
+      CMU_ENTRAID_GET_BASIC_INFO: ${CMU_ENTRAID_GET_BASIC_INFO}
+      CMU_ENTRAID_LOGOUT_URL: ${CMU_ENTRAID_LOGOUT_URL}
+    ports:
+      - ${FRONTEND_PORT}:3000
+    command: sh -c "pnpm run dev"
+    depends_on:
+       db: 
+        condition: service_healthy
+       minio: 
+        condition: service_healthy
+       backend:
+        condition: service_started
+    networks:
+      - g11-net
+
+volumes:
+  pgdata:
+  minio_data:
+
+networks:
+  g11-net:
