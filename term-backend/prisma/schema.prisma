@@ -1,0 +1,116 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          Int         @id @default(autoincrement())
+  preName     String?
+  firstname   String
+  lastname    String
+  email       String      @unique
+  faculty     String
+  accountType accountType
+  studentID   String?
+  createdAt   DateTime    @default(now())
+  updateAt    DateTime    @updatedAt
+
+  // Relations
+  loansBorrowed EquipmentLoan[] @relation("Borrower")
+  roles         UserRole[]
+}
+
+model Organization {
+  id        Int      @id @default(autoincrement())
+  name      String
+  imageName String   @default("")
+  imageUrl  String   @default("")
+  createAt  DateTime @default(now())
+  updateAt  DateTime @updatedAt
+
+  // Relations
+  equipment Equipment[]
+  roles     UserRole[]
+}
+
+model Category {
+  id           Int      @id @default(autoincrement())
+  categoryName String
+  description  String?
+  createAt     DateTime @default(now())
+  updateAt     DateTime @updatedAt
+
+  equipment Equipment[]
+}
+
+model Equipment {
+  id             Int      @id @default(autoincrement())
+  organizationId Int
+  categoryId     Int?
+  name           String
+  imageName      String   @default("")
+  imageUrl       String   @default("")
+  description    String?
+  totalQuantity  Int
+  isAvailable    Boolean
+  createAt       DateTime @default(now())
+  updateAt       DateTime @updatedAt
+
+  // Relations
+  organization Organization    @relation(fields: [organizationId], references: [id])
+  category     Category?       @relation(fields: [categoryId], references: [id])
+  loans        EquipmentLoan[]
+}
+
+model EquipmentLoan {
+  id          Int        @id @default(autoincrement())
+  equipmentId Int
+  borrowerId  Int
+  amount      Int
+  status      LoanStatus
+  borrowedAt  DateTime   @default(now())
+  returnedAt  DateTime?
+  note        String?
+  createAt    DateTime   @default(now())
+  updateAt    DateTime   @updatedAt
+
+  // Relations
+  equipment Equipment @relation(fields: [equipmentId], references: [id])
+  borrower  User      @relation("Borrower", fields: [borrowerId], references: [id])
+}
+
+model UserRole {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  organizationId Int?
+  role           Role
+  assignedAt     DateTime @default(now())
+
+  // Relations
+  user         User          @relation(fields: [userId], references: [id])
+  organization Organization? @relation(fields: [organizationId], references: [id])
+}
+
+enum LoanStatus {
+  pending
+  approved
+  returned
+  rejected
+}
+
+enum accountType {
+  StdAcc
+  AlumAcc
+  MISEmpAcc
+}
+
+enum Role {
+  SYSTEM_ADMIN // Has access across the whole system (organization = null)
+  ORG_STAFF // Manages organization
+  USER // Default role (organization = null)
+}
